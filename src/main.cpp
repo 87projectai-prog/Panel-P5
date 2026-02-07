@@ -14,9 +14,9 @@ const char* ssid     = "Leicha_P5";
 const char* password = "PANELP5";
 
 // ================= LOKASI =================
-double latitude  = -6.200000;    // Jakarta
+double latitude  = -6.200000;     // Jakarta
 double longitude = 106.816666;
-double timezone  = 7;            // WIB
+double timezone  = 7;             // WIB
 
 // ================= PIN PANEL P5 =================
 #define P_LAT D0
@@ -44,43 +44,34 @@ void displayUpdater() {
 // ================= SETUP =================
 void setup() {
   Serial.begin(115200);
-  delay(100);
-
-  // ===== WIFI FIX =====
-  WiFi.mode(WIFI_STA);     // PAKSA MODE STATION
-  WiFi.disconnect();       // BUANG MODE AP LAMA
   delay(200);
 
-  Serial.println("Scanning WiFi...");
+  // ===== WIFI FIX TOTAL =====
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+  delay(200);
+
+  Serial.println("Scan WiFi...");
   int n = WiFi.scanNetworks();
   for (int i = 0; i < n; i++) {
     Serial.println(WiFi.SSID(i));
   }
 
-  Serial.println("Connecting WiFi...");
+  Serial.println("Connect WiFi...");
   WiFi.begin(ssid, password);
 
-  unsigned long startAttempt = millis();
-  while (WiFi.status() != WL_CONNECTED) {
+  unsigned long tStart = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - tStart < 20000) {
     delay(500);
     Serial.print(".");
-    if (millis() - startAttempt > 20000) break; // timeout 20 detik
   }
-
   Serial.println();
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("WiFi CONNECTED");
-    Serial.println(WiFi.localIP());
-  } else {
-    Serial.println("WiFi FAILED");
-  }
 
   // ===== DISPLAY =====
   display.begin(8);
   display.setFastUpdate(true);
   display.setBrightness(80);
   display.setColorDepth(1);
-
   displayTicker.attach_ms(2, displayUpdater);
 
   // ===== NTP =====
@@ -90,6 +81,8 @@ void setup() {
   set_calc_method(Karachi);
   set_asr_method(Shafii);
   set_high_lats_adjust_method(AngleBased);
+
+  Serial.println("READY");
 }
 
 // ================= HELPER =================

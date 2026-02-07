@@ -2,7 +2,10 @@
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
 #include <NTPClient.h>
+
+#include <Adafruit_GFX.h>
 #include <PxMatrix.h>
+
 #include <PrayerTimes.h>
 #include <Ticker.h>
 
@@ -11,12 +14,11 @@ const char* ssid     = "Leicha_P5";
 const char* password = "PANELP5";
 
 // ================= LOKASI =================
-// GANTI kalau bukan Jakarta
-double latitude  = -6.200000;
+double latitude  = -6.200000;    // Jakarta
 double longitude = 106.816666;
-double timezone  = 7;   // WIB
+double timezone  = 7;            // WIB
 
-// ================= PANEL P5 (Wemos D1 mini) =================
+// ================= PIN PANEL P5 =================
 #define P_LAT D0
 #define P_A   D5
 #define P_B   D6
@@ -33,34 +35,58 @@ NTPClient timeClient(ntpUDP, "pool.ntp.org", 7 * 3600, 60000);
 // ================= SHOLAT =================
 double sholatTimes[7];
 
-// ================= REFRESH DISPLAY =================
+// ================= DISPLAY REFRESH =================
 Ticker displayTicker;
-void displayUpdate() {
+void displayUpdater() {
   display.display(70);
 }
 
 // ================= SETUP =================
 void setup() {
   Serial.begin(115200);
+  delay(100);
 
-  // Init display
+  // ===== WIFI FIX =====
+  WiFi.mode(WIFI_STA);     // PAKSA MODE STATION
+  WiFi.disconnect();       // BUANG MODE AP LAMA
+  delay(200);
+
+  Serial.println("Scanning WiFi...");
+  int n = WiFi.scanNetworks();
+  for (int i = 0; i < n; i++) {
+    Serial.println(WiFi.SSID(i));
+  }
+
+  Serial.println("Connecting WiFi...");
+  WiFi.begin(ssid, password);
+
+  unsigned long startAttempt = millis();
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+    if (millis() - startAttempt > 20000) break; // timeout 20 detik
+  }
+
+  Serial.println();
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("WiFi CONNECTED");
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.println("WiFi FAILED");
+  }
+
+  // ===== DISPLAY =====
   display.begin(8);
   display.setFastUpdate(true);
   display.setBrightness(80);
   display.setColorDepth(1);
 
-  displayTicker.attach_ms(2, displayUpdate);
+  displayTicker.attach_ms(2, displayUpdater);
 
-  // WiFi
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-  }
-
-  // NTP
+  // ===== NTP =====
   timeClient.begin();
 
-  // Metode hisab (umum di Indonesia)
+  // ===== METODE HISAB =====
   set_calc_method(Karachi);
   set_asr_method(Shafii);
   set_high_lats_adjust_method(AngleBased);
@@ -97,7 +123,6 @@ void loop() {
   display.clearDisplay();
 
   // ===== BARIS ATAS =====
-  // Jam
   display.setCursor(0, 0);
   if (hh < 10) display.print("0");
   display.print(hh);
@@ -105,7 +130,6 @@ void loop() {
   if (mm < 10) display.print("0");
   display.print(mm);
 
-  // Dzuhur
   display.setCursor(16, 0);
   display.print("D ");
   printTime(sholatTimes[Dhuhr]);

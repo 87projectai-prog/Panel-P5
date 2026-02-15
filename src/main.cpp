@@ -1,49 +1,30 @@
 #include <WiFi.h>
 #include <WebServer.h>
-#include <Adafruit_GFX.h>
-#include <RGBmatrixPanel.h>
-
-// ===== PIN CONFIG =====
-#define CLK 1
-#define LAT 20
-#define OE  21
-
-#define A 8
-#define B 9
-#define C 10
-#define D 0
-
-#define R1 2
-#define G1 3
-#define B1 4
-#define R2 5
-#define G2 6
-#define B2 7
+#include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 
 WebServer server(80);
-RGBmatrixPanel *matrix;
 
 String text = "87PROJECT";
-int speedScroll = 40;
-uint16_t textColor;
+int scrollSpeed = 30;
 int x;
 
+MatrixPanel_I2S_DMA *dma_display = nullptr;
+
 void handleRoot() {
-  String page = "<html><head><meta name='viewport' content='width=device-width, initial-scale=1'>";
-  page += "<style>body{background:black;color:lime;font-family:Arial;text-align:center;}</style></head><body>";
+  String page = "<html><body style='background:black;color:lime;text-align:center'>";
   page += "<h2>P5 CONTROL</h2>";
   page += "<form action='/set'>";
   page += "Text:<br><input name='msg'><br><br>";
-  page += "Speed (10-100):<br><input name='spd' type='number'><br><br>";
-  page += "<input type='submit' value='UPDATE'>";
+  page += "Speed:<br><input name='spd' type='number'><br><br>";
+  page += "<input type='submit' value='Update'>";
   page += "</form></body></html>";
   server.send(200, "text/html", page);
 }
 
 void handleSet() {
   if(server.hasArg("msg")) text = server.arg("msg");
-  if(server.hasArg("spd")) speedScroll = server.arg("spd").toInt();
-  x = 64;
+  if(server.hasArg("spd")) scrollSpeed = server.arg("spd").toInt();
+  x = dma_display->width();
   server.sendHeader("Location","/");
   server.send(303);
 }
@@ -51,35 +32,36 @@ void handleSet() {
 void setup() {
   Serial.begin(115200);
 
-  // ===== START WIFI DULU =====
   WiFi.mode(WIFI_AP);
   WiFi.softAP("P5-CONTROL", "12345678");
-  Serial.println("WiFi AP Started");
-  Serial.println(WiFi.softAPIP());
+
+  HUB75_I2S_CFG mxconfig(
+    64,   // width
+    32,   // height
+    1     // number of panels
+  );
+
+  dma_display = new MatrixPanel_I2S_DMA(mxconfig);
+  dma_display->begin();
+  dma_display->setBrightness8(80);
+
+  x = dma_display->width();
 
   server.on("/", handleRoot);
   server.on("/set", handleSet);
   server.begin();
-
-  delay(2000); // kasih waktu WiFi stabil
-
-  // ===== BARU START PANEL =====
-  matrix = new RGBmatrixPanel(A, B, C, D, CLK, LAT, OE, false, 64);
-  matrix->begin();
-  textColor = matrix->Color333(7,0,0);
-  x = 64;
 }
 
 void loop() {
   server.handleClient();
 
-  matrix->fillScreen(0);
-  matrix->setCursor(x, 12);
-  matrix->setTextColor(textColor);
-  matrix->setTextSize(1);
-  matrix->print(text);
+  dma_display->clearScreen();
+  dma_display->setTextSize(1);
+  dma_display->setTextColor(dma_display->color565(255,0,0));
+  dma_display->setCursor(x, 12);
+  dma_display->print(text);
 
-  if(--x < -200) x = 64;
+  if(--x < -200) x = dma_display->width();
 
-  delay(speedScroll);
+  delay(scrollSpeed);
 }

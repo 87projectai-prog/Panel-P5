@@ -1,144 +1,85 @@
-#include <Arduino.h>
-#include <ESP8266WiFi.h>
-#include <WiFiUdp.h>
-#include <NTPClient.h>
-
+#include <WiFi.h>
+#include <WebServer.h>
 #include <Adafruit_GFX.h>
-#include <PxMatrix.h>
+#include <RGBmatrixPanel.h>
 
-#include <PrayerTimes.h>
-#include <Ticker.h>
+// ===== PIN CONFIG =====
+#define CLK 1
+#define LAT 20
+#define OE  21
 
-// ================= WIFI =================
-const char* ssid     = "Leicha_P5";
-const char* password = "PANELP5";
+#define A 8
+#define B 9
+#define C 10
+#define D 0
 
-// ================= LOKASI =================
-double latitude  = -6.200000;     // Jakarta
-double longitude = 106.816666;
-double timezone  = 7;             // WIB
+#define R1 2
+#define G1 3
+#define B1 4
+#define R2 5
+#define G2 6
+#define B2 7
 
-// ================= PIN PANEL P5 =================
-#define P_LAT D0
-#define P_A   D5
-#define P_B   D6
-#define P_C   D7
-#define P_OE  D8
-#define P_CLK D1
+WebServer server(80);
+RGBmatrixPanel *matrix;
 
-PxMATRIX display(32, 16, P_LAT, P_OE, P_A, P_B, P_C);
+String text = "87PROJECT";
+int speedScroll = 40;
+uint16_t textColor;
+int x;
 
-// ================= NTP =================
-WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, "pool.ntp.org", 7 * 3600, 60000);
-
-// ================= SHOLAT =================
-double sholatTimes[7];
-
-// ================= DISPLAY REFRESH =================
-Ticker displayTicker;
-void displayUpdater() {
-  display.display(70);
+void handleRoot() {
+  String page = "<html><head><meta name='viewport' content='width=device-width, initial-scale=1'>";
+  page += "<style>body{background:black;color:lime;font-family:Arial;text-align:center;}</style></head><body>";
+  page += "<h2>P5 CONTROL</h2>";
+  page += "<form action='/set'>";
+  page += "Text:<br><input name='msg'><br><br>";
+  page += "Speed (10-100):<br><input name='spd' type='number'><br><br>";
+  page += "<input type='submit' value='UPDATE'>";
+  page += "</form></body></html>";
+  server.send(200, "text/html", page);
 }
 
-// ================= SETUP =================
+void handleSet() {
+  if(server.hasArg("msg")) text = server.arg("msg");
+  if(server.hasArg("spd")) speedScroll = server.arg("spd").toInt();
+  x = 64;
+  server.sendHeader("Location","/");
+  server.send(303);
+}
+
 void setup() {
   Serial.begin(115200);
-  delay(200);
 
-  // ===== WIFI FIX TOTAL =====
-  WiFi.mode(WIFI_STA);
-  WiFi.disconnect();
-  delay(200);
+  // ===== START WIFI DULU =====
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP("P5-CONTROL", "12345678");
+  Serial.println("WiFi AP Started");
+  Serial.println(WiFi.softAPIP());
 
-  Serial.println("Scan WiFi...");
-  int n = WiFi.scanNetworks();
-  for (int i = 0; i < n; i++) {
-    Serial.println(WiFi.SSID(i));
-  }
+  server.on("/", handleRoot);
+  server.on("/set", handleSet);
+  server.begin();
 
-  Serial.println("Connect WiFi...");
-  WiFi.begin(ssid, password);
+  delay(2000); // kasih waktu WiFi stabil
 
-  unsigned long tStart = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - tStart < 20000) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println();
-
-  // ===== DISPLAY =====
-  display.begin(8);
-  display.setFastUpdate(true);
-  display.setBrightness(80);
-  display.setColorDepth(1);
-  displayTicker.attach_ms(2, displayUpdater);
-
-  // ===== NTP =====
-  timeClient.begin();
-
-  // ===== METODE HISAB =====
-  set_calc_method(Karachi);
-  set_asr_method(Shafii);
-  set_high_lats_adjust_method(AngleBased);
-
-  Serial.println("READY");
+  // ===== BARU START PANEL =====
+  matrix = new RGBmatrixPanel(A, B, C, D, CLK, LAT, OE, false, 64);
+  matrix->begin();
+  textColor = matrix->Color333(7,0,0);
+  x = 64;
 }
 
-// ================= HELPER =================
-void printTime(double t) {
-  int h = (int)t;
-  int m = (t - h) * 60;
-  if (h < 10) display.print("0");
-  display.print(h);
-  display.print(":");
-  if (m < 10) display.print("0");
-  display.print(m);
-}
-
-// ================= LOOP =================
 void loop() {
-  timeClient.update();
+  server.handleClient();
 
-  int hh = timeClient.getHours();
-  int mm = timeClient.getMinutes();
+  matrix->fillScreen(0);
+  matrix->setCursor(x, 12);
+  matrix->setTextColor(textColor);
+  matrix->setTextSize(1);
+  matrix->print(text);
 
-  static int lastMinute = -1;
-  if (mm != lastMinute) {
-    lastMinute = mm;
-    get_prayer_times(
-      year(), month(), day(),
-      latitude, longitude, timezone,
-      sholatTimes
-    );
-  }
+  if(--x < -200) x = 64;
 
-  display.clearDisplay();
-
-  // ===== BARIS ATAS =====
-  display.setCursor(0, 0);
-  if (hh < 10) display.print("0");
-  display.print(hh);
-  display.print(":");
-  if (mm < 10) display.print("0");
-  display.print(mm);
-
-  display.setCursor(16, 0);
-  display.print("D ");
-  printTime(sholatTimes[Dhuhr]);
-
-  // ===== BARIS BAWAH =====
-  display.setCursor(0, 8);
-  display.print("S ");
-  printTime(sholatTimes[Fajr]);
-
-  display.setCursor(11, 8);
-  display.print("M ");
-  printTime(sholatTimes[Maghrib]);
-
-  display.setCursor(22, 8);
-  display.print("I ");
-  printTime(sholatTimes[Isha]);
-
-  delay(200);
+  delay(speedScroll);
 }
